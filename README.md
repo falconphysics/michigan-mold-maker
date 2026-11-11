@@ -1,6 +1,7 @@
 # Michigan Mold Maker
 
-Design 3D-printable ceramic molds shaped like Michigan's **Lower** or **Upper Peninsula**, sized for a spoon rest.
+Design 3D-printable ceramic molds shaped like Michigan's **Lower** or **Upper Peninsula** or one of the **Great Lakes**
+(Superior, Michigan, Huron, Erie, Ontario), sized for a spoon rest.
 
 - **Drape (hump) mold**: lay a clay slab over it. It's mirrored so the finished dish reads correctly.
   Optional threaded socket and screw-in stand.
@@ -36,7 +37,7 @@ Then open <http://localhost:8000>.
 |---|---|
 | `index.html` | Page layout and styles |
 | `app.js` | Controls, geometry, 3D preview, STL and zip export |
-| `outlines.js` | Lower and Upper Peninsula outlines |
+| `outlines.js` | Peninsula and Great Lakes outlines |
 | `vendor/manifold/` | [Manifold](https://github.com/elalish/manifold) geometry engine, v3.5.4 (Apache-2.0) |
 | `vendor/three/` | [three.js](https://threejs.org) r160 for the 3D preview (MIT) |
 
@@ -49,4 +50,5 @@ Then open <http://localhost:8000>.
 
 ## Credits
 
-Outline data: US Census state boundary via [glynnbird/usstatesgeojson](https://github.com/glynnbird/usstatesgeojson).
+Peninsula outlines: US Census state boundary via [glynnbird/usstatesgeojson](https://github.com/glynnbird/usstatesgeojson).
+Great Lakes outlines: [Natural Earth](https://www.naturalearthdata.com) 1:10m lakes (public domain), islands filled in.

@@ -1,13 +1,19 @@
 import Module from "./vendor/manifold/manifold.js";   // Manifold geometry engine (manifold-3d 3.5.4, Apache-2.0)
-import { OUTLINES } from "./outlines.js";              // Michigan peninsula outlines
+import { OUTLINES } from "./outlines.js";              // Michigan peninsula and Great Lakes outlines
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { toCreasedNormals } from "three/addons/utils/BufferGeometryUtils.js";
 
 /* ---------------- parameters ---------------- */
-const DEFAULTS = { peninsula: "lower", style: "drape", fired_length: 190, shrink: 12, depth: 20, wall: 28, rim: 12, base: 4,
+const SHAPES = {
+  lower: { label: "Lower Peninsula", file: "lower_peninsula" }, upper: { label: "Upper Peninsula", file: "upper_peninsula" },
+  superior: { label: "Lake Superior", file: "lake_superior" }, michigan: { label: "Lake Michigan", file: "lake_michigan" },
+  huron: { label: "Lake Huron", file: "lake_huron" }, erie: { label: "Lake Erie", file: "lake_erie" },
+  ontario: { label: "Lake Ontario", file: "lake_ontario" },
+};
+const DEFAULTS = { shape: "lower", style: "drape", fired_length: 190, shrink: 12, depth: 20, wall: 28, rim: 12, base: 4,
   foot: 2, smooth: 2.5, res: 0.3, socket: true, thread_dia: 40, pitch: 5, thread_len: 14, clearance: 0.35,
-  stand: true, stand_height: 90, base_dia: 140 };
+  stand: true, stand_height: 90, base_dia: 140, top_dia: 72 };
 
 const SLIDERS = [
   ["fired_length", "Finished length (longest side)", 120, 280, 1, "mm", "Size", true],
@@ -22,6 +28,7 @@ const SLIDERS = [
   ["thread_len", "Thread depth", 11, 30, 0.5, "mm", "Stand"],
   ["clearance", "Thread clearance", 0.15, 0.8, 0.05, "mm", "Stand"],
   ["stand_height", "Stand height", 40, 160, 1, "mm", "Stand", true],
+  ["top_dia", "Stand top diameter", 24, 120, 1, "mm", "Stand", true],
   ["base_dia", "Stand base diameter", 80, 200, 1, "mm", "Stand", true],
 ];
 const HINTS = {
@@ -30,6 +37,7 @@ const HINTS = {
   smooth: "Rounds off coastline details too thin for a clay slab to follow.",
   foot: "Short vertical edge at the base to trim the slab against.",
   clearance: "Gap around the threads. Raise it if a test print is tight.",
+  top_dia: "The pad the mold sits on, under the threads. Keep it smaller than the mold around the hole so it doesn't stick out past the edge.",
   thread_len: "How deep the threaded hole goes. At least 2 full turns (11 mm) so the threads can't strip; the maximum keeps 3 mm of plastic over the hole.",
 };
 
@@ -51,23 +59,24 @@ for (const [key, label, lo, hi, step, unit, grp, inches] of SLIDERS) {
     (HINTS[key] ? `<p class="hint">${HINTS[key]}</p>` : "");
   g.appendChild(d);
   const inp = d.querySelector("input"), out = d.querySelector("output");
-  inp.addEventListener("input", () => { out.innerHTML = fmt(inp.value, unit, inches); if (key === "depth" || key === "foot") syncGroups(); schedule(); });
+  inp.addEventListener("input", () => { out.innerHTML = fmt(inp.value, unit, inches); if (["depth", "foot", "thread_dia", "stand_height"].includes(key)) syncGroups(); schedule(); });
   inp._paint = () => { out.innerHTML = fmt(inp.value, unit, inches); };
 }
 
 function readParams() {
   const p = { ...DEFAULTS };
   p.style = document.querySelector('input[name="style"]:checked').value;
-  p.peninsula = document.querySelector('input[name="peninsula"]:checked').value;
+  p.shape = document.querySelector('input[name="shape"]:checked').value;
   for (const [key] of SLIDERS) p[key] = parseFloat($(key).value);
   p.socket = $("socket").checked;
   p.stand = $("stand").checked;
   p.res = parseFloat($("quality").value);
   return p;
 }
+function setSlider(key, v) { $(key).value = v; $(key)._paint(); }
 function writeParams(p) {
   $(`style-${p.style}`).checked = true;
-  $(`pen-${p.peninsula}`).checked = true;
+  $(`shape-${SHAPES[p.shape] ? p.shape : "lower"}`).checked = true;
   for (const [key] of SLIDERS) { $(key).value = p[key]; $(key)._paint(); }
   $("socket").checked = p.socket; $("stand").checked = p.stand;
   $("quality").value = String(p.res);
@@ -88,22 +97,28 @@ function syncGroups() {
   if (parseFloat(tl.value) > tMax) tl.value = tMax;
   if (parseFloat(tl.value) < tMin) tl.value = tMin;
   tl._paint?.();
-  for (const k of ["stand_height", "base_dia"]) $(k).disabled = dis || !$("stand").checked;
+  for (const k of ["stand_height", "base_dia", "top_dia"]) $(k).disabled = dis || !$("stand").checked;
+  // stand top: at least the column (thread + 4 mm); at most what a 45-degree flare can reach on this stand height
+  const td = $("top_dia"), colD = parseFloat($("thread_dia").value) + 4;
+  const tdMax = Math.max(colD, Math.min(120, colD + 2 * (parseFloat($("stand_height").value) - 30)));
+  td.min = colD; td.max = tdMax;
+  if (parseFloat(td.value) < colD) td.value = colD;
+  if (parseFloat(td.value) > tdMax) td.value = tdMax;
+  td._paint?.();
 }
 document.querySelectorAll('input[name="style"]').forEach(r => r.addEventListener("change", () => { syncGroups(); schedule(); }));
-document.querySelectorAll('input[name="peninsula"]').forEach(r => r.addEventListener("change", () => {
+document.querySelectorAll('input[name="shape"]').forEach(r => r.addEventListener("change", () => {
   firstFit = true;
-  const p = readParams(), changed = [];
-  // The U.P. is narrow (about 43 mm across at its widest at 190 mm long): use a tighter side curve and a smaller thread.
-  if (p.peninsula === "upper" && p.style === "drape" && p.socket) {
-    if (p.wall > 12) { $("wall").value = 12; $("wall")._paint(); changed.push("side curve to 12 mm"); }
-    if (p.thread_dia > 20) { $("thread_dia").value = 20; $("thread_dia")._paint(); changed.push("thread diameter to 20 mm"); }
-  }
-  const note = $("pen-note");
-  note.hidden = !changed.length;
-  note.textContent = changed.length ? `The U.P. is narrow, so I set the ${changed.join(" and ")} so the shape reaches full depth and the threaded hole fits.` : "";
+  setSlider("wall", DEFAULTS.wall);              // start each shape from the defaults, then fit it
+  setSlider("thread_dia", DEFAULTS.thread_dia);
+  autoFit();
+  syncGroups();
+  const f = $("fname"), stub = SHAPES[readParams().shape].file + "_dish";
+  if (f.dataset.auto !== "0") f.value = stub;
+  fitTopPending = true;
   schedule();
 }));
+$("fname").addEventListener("input", () => { $("fname").dataset.auto = "0"; });
 for (const id of ["socket", "stand"]) $(id).addEventListener("change", () => { syncGroups(); schedule(); });
 for (const id of ["bed_x", "bed_y"]) $(id).addEventListener("input", () => updateChips());
 $("quality").addEventListener("change", saveSettings);
@@ -111,10 +126,14 @@ $("fname").addEventListener("input", saveSettings);
 $("reset").addEventListener("click", () => { writeParams(DEFAULTS); schedule(); });
 
 const saved = store.get("mmm-settings");
-writeParams({ ...DEFAULTS, ...(saved?.params || {}) });
+const savedParams = { ...(saved?.params || {}) };
+if (savedParams.peninsula && !savedParams.shape) savedParams.shape = savedParams.peninsula;
+writeParams({ ...DEFAULTS, ...savedParams });
 if (saved?.bed_x) $("bed_x").value = saved.bed_x;
 if (saved?.bed_y) $("bed_y").value = saved.bed_y;
-if (saved?.fname) $("fname").value = saved.fname;
+const autoNames = new Set(["lp_spoon_rest", ...Object.values(SHAPES).flatMap(s => [s.file + "_spoon_rest", s.file + "_dish"])]);
+if (saved?.fname && !autoNames.has(saved.fname)) { $("fname").value = saved.fname; $("fname").dataset.auto = "0"; }
+else $("fname").value = SHAPES[readParams().shape].file + "_dish";
 function saveSettings() {
   store.set("mmm-settings", { params: readParams(), bed_x: $("bed_x").value, bed_y: $("bed_y").value, fname: $("fname").value });
 }
@@ -137,7 +156,7 @@ const wetLength = (p) => p.fired_length / (1 - p.shrink / 100);
 
 /** Scaled, mirrored-for-drape, smoothed outline in mm (CCW). `T` collects wasm objects to free. */
 function outline(p, T) {
-  const src = OUTLINES[p.peninsula] || OUTLINES.lower;
+  const src = OUTLINES[p.shape] || OUTLINES.lower;
   const [x0, y0, x1, y1] = bounds(src);
   const s = wetLength(p) / Math.max(x1 - x0, y1 - y0);
   let pts = src.map(([x, y]) => [(x - (x0 + x1) / 2) * s * (p.style === "drape" ? -1 : 1), (y - (y0 + y1) / 2) * s]);
@@ -152,7 +171,9 @@ function outline(p, T) {
   let best = null;
   for (const ring of cs.toPolygons()) { const a = polyArea(ring); if (!best || Math.abs(a) > Math.abs(best.a)) best = { ring, a }; }
   let ring = best.ring; if (best.a < 0) ring = ring.slice().reverse();
-  return ring;
+  // smoothing can trim narrow tips: rescale so the longest side is exactly the size asked for
+  const [a0, b0, a1, b1] = bounds(ring), k = wetLength(p) / Math.max(a1 - a0, b1 - b0);
+  return ring.map(([x, y]) => [(x - (a0 + a1) / 2) * k, (y - (b0 + b1) / 2) * k]);
 }
 
 /** Fast signed distance to the outline (+ inside), clamped at maxD; segments bucketed in a coarse grid. */
@@ -270,9 +291,48 @@ function socketLocation(p, ring) {
     const avail = p.foot + wallProfile(p, edge) - 3 - p.thread_len;   // lowest surface over the hole
     if (avail < 0) continue;
     const d2 = (xs[i] - cx) ** 2 + (ys[j] - cy) ** 2;
-    if (!best || d2 < best[2]) best = [xs[i], ys[j], d2, avail];
+    if (!best || d2 < best[2]) best = [xs[i], ys[j], d2, avail, g[j * xs.length + i]];
   }
-  return best ? [best[0], best[1], Math.sqrt(best[2]), Math.max(0, Math.min(best[3], Rh - 6))] : null;
+  return best ? [best[0], best[1], Math.sqrt(best[2]), Math.max(0, Math.min(best[3], Rh - 6)), best[4]] : null;
+}
+
+/** Widest inscribed circle radius (mm) of the scaled outline — how much room the shape has. */
+function maxInscribed(ring) {
+  const [x0, y0, x1, y1] = bounds(ring);
+  const step = Math.max(1, Math.max(x1 - x0, y1 - y0) / 150);
+  const xs = [], ys = [];
+  for (let x = x0; x <= x1; x += step) xs.push(x);
+  for (let y = y0; y <= y1; y += step) ys.push(y);
+  const g = makeSDF(ring, Math.max(x1 - x0, y1 - y0)).grid(xs, ys);
+  let m = 0; for (const v of g) if (v > m) m = v;
+  return m;
+}
+
+/** After choosing a shape: pick a side curve that lets narrow shapes reach full depth,
+ *  and the largest thread that fits. Only lowers values; says what changed. */
+function autoFit() {
+  const notes = [];
+  if (M) {
+    const trash = []; const T = (o) => { trash.push(o); return o; };
+    try {
+      const p = readParams();
+      const r = maxInscribed(outline(p, T));
+      const wall = Math.min(28, Math.max(6, Math.round(r * 0.55 * 2) / 2));
+      if (wall < p.wall) { setSlider("wall", wall); notes.push(`side curve to ${wall} mm`); }
+      if (p.style === "drape" && p.socket) {
+        const q = readParams(), ring = outline(q, T);
+        if (!socketLocation(q, ring)) {
+          for (const d of [36, 32, 28, 24, 20]) {
+            if (d >= q.thread_dia) continue;
+            if (socketLocation({ ...q, thread_dia: d }, ring)) { setSlider("thread_dia", d); notes.push(`thread diameter to ${d} mm`); break; }
+          }
+        }
+      }
+    } finally { for (const o of trash) { try { o.delete(); } catch {} } }
+  }
+  const el = $("pen-note");
+  el.hidden = !notes.length;
+  el.textContent = notes.length ? `To fit this shape, I set the ${notes.join(" and ")}.` : "";
 }
 
 function threadCS(rMaj, pitch, depth, grow, n, T) {
@@ -320,16 +380,19 @@ function build(p, preview) {
       solid = T(solid.subtract(mv(s, hx, hy, 0, T)));
       if (p.stand) {
         const H = p.stand_height, rb = p.base_dia / 2, rc = R + 2, studLen = p.thread_len - 1;
+        const rt = Math.max(rc, p.top_dia / 2), fl = Math.min(rt - rc, H - 30);   // 45-degree flare up to the top pad
         let st = cone(rb, rb - 2, 2, seg, T);
-        for (const [a, b, h, z] of [[rb - 2, rb - 2, 4, 2], [rb - 2, rb - 4, 2, 6], [rc + 18, rc, 18, 7.9],
-                                     [rc, rc, H - 8, 8], [rc, rc + 14, 14, H - 14], [rc + 14, rc + 14, 3, H - 0.01]])
-          st = T(st.add(mv(cone(a, b, h, seg, T), 0, 0, z, T)));
+        const partsList = [[rb - 2, rb - 2, 4, 2], [rb - 2, rb - 4, 2, 6], [rc + 18, rc, 18, 7.9], [rc, rc, H - 8, 8]];
+        if (fl > 0.5) partsList.push([rc, rc + fl, fl, H - fl]);
+        partsList.push([rt, rt, 3, H - 0.01]);
+        for (const [a, b, h, z] of partsList) st = T(st.add(mv(cone(a, b, h, seg, T), 0, 0, z, T)));
         const z0 = H + 3, ztc = z0 + studLen - 2.5;
         const stud = threaded(threadCS(R, p.pitch, td, 0, tn, T), z0 - 0.5, studLen + 0.5, p.pitch, dz, T);
         const tip = T(mv(cone(R + 5, R + 5, ztc - (z0 - 1), seg, T), 0, 0, z0 - 1, T)
                       .add(mv(cone(R + 1, R - td - 0.01, 2.5, seg, T), 0, 0, ztc - 0.001, T)));
         st = T(st.add(T(stud.intersect(tip))));
         stand = meshOut(st);
+        info.padRoom = 2 * sock[4];     // widest pad that stays inside the mold outline at the hole
         info.standTop = z0;
       }
     }
@@ -457,7 +520,7 @@ function updateChips() {
   if (!last) { $("chips").innerHTML = ""; return; }
   const { info } = last;
   const [fa, fb] = info.outline.map(v => v * (1 - p.shrink / 100)).sort((a, b) => b - a);
-  chips.push([p.peninsula === "upper" ? "Finished U.P." : "Finished spoon rest",
+  chips.push(["Finished spoon rest",
     `${fa.toFixed(0)} × ${fb.toFixed(0)} mm (${(fa / 25.4).toFixed(1)} × ${(fb / 25.4).toFixed(1)} in)`, ""]);
   const [mx, my, mz] = info.mold;
   const bx = +$("bed_x").value, by = +$("bed_y").value;
@@ -466,6 +529,8 @@ function updateChips() {
   if (last.stand) {
     const sFits = p.base_dia <= Math.min(bx, by);
     chips.push(["Stand", `${p.base_dia.toFixed(0)} mm base, ${(p.stand_height + 3 + p.thread_len - 1).toFixed(0)} mm tall${sFits ? "" : ", too big for your bed"}`, sFits ? "good" : "warn"]);
+    if (info.padRoom && p.top_dia > info.padRoom)
+      chips.push(["Stand top", `${p.top_dia.toFixed(0)} mm is wider than the mold there (max ${Math.floor(info.padRoom)} mm)`, "warn"]);
   }
   if (info.sockErr) chips.push(["Socket", "doesn't fit", "warn"]);
   if (last.sock) chips.push(["Socket", `${p.thread_dia} mm wide, ${p.thread_len} mm deep, ${last.sock[2].toFixed(0)} mm off centre`, ""]);
@@ -475,6 +540,12 @@ function updateChips() {
 
 /* ---------------- preview scheduling ---------------- */
 let timer = null;
+let fitTopPending = false;
+function addFitNote(msg) {
+  const el = $("pen-note");
+  if (el.hidden || !el.textContent) { el.hidden = false; el.textContent = `I set the ${msg}.`; }
+  else el.textContent += ` I also set the ${msg}.`;
+}
 function schedule() { clearTimeout(timer); timer = setTimeout(preview, 300); }
 const tick = () => new Promise(r => setTimeout(r, 20));
 async function preview() {
@@ -483,7 +554,19 @@ async function preview() {
   $("busy").hidden = false; await tick();
   try {
     const res = build(p, true);
-    last = res; show(res, p); updateChips();
+    last = res;
+    if (fitTopPending && res.info.padRoom) {
+      fitTopPending = false;
+      const colD = p.thread_dia + 4;
+      const want = Math.max(colD, Math.min(p.thread_dia + 32, Math.floor(res.info.padRoom - 6)));
+      if (want !== p.top_dia) {
+        setSlider("top_dia", want); syncGroups();
+        addFitNote(want < p.top_dia ? `stand top to ${want} mm so it stays inside the mold` : `stand top back to ${want} mm`);
+        $("busy").hidden = true; schedule(); return;
+      }
+    }
+    fitTopPending = false;
+    show(res, p); updateChips();
     if (res.info.sockErr) setStatus(res.info.sockErr, true);
     else setStatus("Ready. Adjust the settings, then download.");
   } catch (e) { setStatus(e.message || String(e), true); }
@@ -495,7 +578,7 @@ function setStatus(t, err) { $("status").textContent = t; $("status").classList.
 let downloads = null;
 $("go").addEventListener("click", async () => {
   const p = readParams();
-  const name = ($("fname").value.trim() || "lp_spoon_rest").replace(/[^\w\- ]+/g, "_");
+  const name = ($("fname").value.trim() || "dish").replace(/[^\w\- ]+/g, "_");
   $("go").disabled = true; setStatus("Building full-quality geometry… this can take 10–30 seconds."); await tick();
   try {
     const t0 = performance.now();
@@ -532,14 +615,14 @@ $("go").addEventListener("click", async () => {
   $("go").disabled = false;
 });
 function notes(p, res) {
-  const L = [`Michigan Mold Maker: ${p.peninsula === "upper" ? "Upper" : "Lower"} Peninsula ${p.style} mold`, "",
+  const L = [`Michigan Mold Maker: ${SHAPES[p.shape].label}, ${p.style} mold`, "",
     `Finished spoon rest: about ${p.fired_length} mm on its longest side after firing (${p.shrink}% shrinkage).`,
     `Mold: ${res.info.mold.map(v => v.toFixed(0)).join(" x ")} mm. Print flat side down, no supports, 3 walls, 10-15% infill.`];
   if (p.style === "drape") L.push("", "The mold is a mirror image on purpose: the dish reads correctly once you flip it right side up.",
     "Cover the hump with plastic wrap or thin cloth, drape a ~6 mm slab, smooth from the centre out, trim at the base line.",
     "Take the clay off at soft leather-hard: it shrinks onto a hump and can crack if left too long.");
   else L.push("", "Line the cavity with plastic wrap or cloth, or dust it with cornstarch, so the clay releases.");
-  if (res.stand) L.push("", `Stand: print upright, no supports, 3-4 walls. Thread ${p.thread_dia} mm x ${p.pitch} mm pitch, ${p.thread_len} mm deep, ${p.clearance} mm clearance.`,
+  if (res.stand) L.push("", `Stand: print upright, no supports, 3-4 walls. Thread ${p.thread_dia} mm x ${p.pitch} mm pitch, ${p.thread_len} mm deep, ${p.clearance} mm clearance. Top pad ${p.top_dia} mm.`,
     "If the threads are tight, regenerate both parts with a larger thread clearance.");
   return L.join("\n");
 }

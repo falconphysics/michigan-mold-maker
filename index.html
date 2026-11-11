@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="Design 3D-printable slump and drape molds shaped like Michigan's Lower or Upper Peninsula for a ceramic spoon rest.">
+<meta name="description" content="Design 3D-printable slump and drape molds shaped like Michigan's peninsulas or the Great Lakes for a ceramic spoon rest.">
 <title>Michigan Mold Maker</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -58,6 +58,9 @@ header p { margin: 0; color: var(--muted); }
 .seg input:checked + label { background: var(--lake); color: #fff; }
 .seg input:checked + label small { color: rgba(255,255,255,.85); }
 .seg input:focus-visible + label { outline: 2px solid var(--lake); outline-offset: -4px; }
+.seg.lakes { grid-template-columns: repeat(3, 1fr); }
+.seg.lakes label { padding: 7px 4px; font-size: 13.5px; }
+.seg.lakes label:nth-of-type(n+4) { border-top: 1px solid var(--line); }
 .ctl { display: grid; gap: 2px; }
 .ctl .row { display: flex; justify-content: space-between; gap: 8px; }
 .ctl output { font-variant-numeric: tabular-nums; color: var(--muted); white-space: nowrap; }
@@ -123,17 +126,26 @@ button.link:hover { text-decoration: underline; }
 <div class="app">
   <header>
     <h1>Michigan Mold Maker</h1>
-    <p>Lower or Upper Peninsula slump and drape molds for a ceramic spoon rest, ready to 3D print.</p>
+    <p>Spoon-rest molds shaped like Michigan&rsquo;s peninsulas or the Great Lakes, ready to 3D print.</p>
   </header>
 
   <aside class="rail" id="rail">
     <div class="group">
-      <h2>Peninsula</h2>
-      <div class="seg" role="radiogroup" aria-label="Peninsula">
-        <input type="radio" name="peninsula" id="pen-lower" value="lower" checked>
-        <label for="pen-lower">Lower<small>the mitten</small></label>
-        <input type="radio" name="peninsula" id="pen-upper" value="upper">
-        <label for="pen-upper">Upper<small>the U.P.</small></label>
+      <h2>Shape</h2>
+      <p class="hint">Michigan peninsulas</p>
+      <div class="seg" role="radiogroup" aria-label="Michigan peninsula">
+        <input type="radio" name="shape" id="shape-lower" value="lower" checked>
+        <label for="shape-lower">Lower<small>the mitten</small></label>
+        <input type="radio" name="shape" id="shape-upper" value="upper">
+        <label for="shape-upper">Upper<small>the U.P.</small></label>
+      </div>
+      <p class="hint">Great Lakes</p>
+      <div class="seg lakes" role="radiogroup" aria-label="Great Lake">
+        <input type="radio" name="shape" id="shape-superior" value="superior"><label for="shape-superior">Superior</label>
+        <input type="radio" name="shape" id="shape-michigan" value="michigan"><label for="shape-michigan">Michigan</label>
+        <input type="radio" name="shape" id="shape-huron" value="huron"><label for="shape-huron">Huron</label>
+        <input type="radio" name="shape" id="shape-erie" value="erie"><label for="shape-erie">Erie</label>
+        <input type="radio" name="shape" id="shape-ontario" value="ontario"><label for="shape-ontario">Ontario</label>
       </div>
       <p class="hint" id="pen-note" hidden></p>
     </div>
@@ -147,7 +159,7 @@ button.link:hover { text-decoration: underline; }
       </div>
     </div>
     <div class="group" data-group="Size"><h2>Size</h2></div>
-    <div class="group" data-group="Shape"><h2>Shape</h2></div>
+    <div class="group" data-group="Shape"><h2>Dish profile</h2></div>
     <div class="group" data-group="Drape"><h2>Drape options</h2></div>
     <div class="group" data-group="Slump"><h2>Slump options</h2></div>
     <div class="group" data-group="Stand">
@@ -167,7 +179,7 @@ button.link:hover { text-decoration: underline; }
         <span class="pair"><input type="number" id="bed_x" value="256" min="50" max="1000"> ×
         <input type="number" id="bed_y" value="256" min="50" max="1000"></span></div>
       <div class="field"><label for="fname">File name</label>
-        <input type="text" id="fname" value="lp_spoon_rest" style="width: 150px"></div>
+        <input type="text" id="fname" value="lower_peninsula_dish" style="width: 150px"></div>
       <button class="link" id="reset" type="button">Reset to defaults</button>
     </div>
   </aside>
