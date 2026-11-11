@@ -1,12 +1,13 @@
 # Michigan Mold Maker
 
 Design 3D-printable ceramic molds shaped like Michigan's **Lower** or **Upper Peninsula** or one of the **Great Lakes**
-(Superior, Michigan, Huron, Erie, Ontario), sized for a spoon rest.
+(Superior, Michigan, Huron, Erie, Ontario). This project was created with Claude's Opus 5.5.
 
 - **Drape (hump) mold**: lay a clay slab over it. It's mirrored so the finished dish reads correctly.
   Optional threaded socket and screw-in stand.
 - **Slump mold**: press a clay slab into the cavity.
 - Live 3D preview; downloads a `.zip` with the STL files, your settings and printing notes.
+- Try it out at https://falconphysics.github.io/michigan-mold-maker/
 
 Everything runs in the browser (WebAssembly geometry engine). There's no server and nothing to install.
 
