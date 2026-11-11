@@ -513,6 +513,31 @@ function resize() { const w = host.clientWidth, h = host.clientHeight; renderer.
 new ResizeObserver(resize).observe(host);
 (function loop() { controls.update(); renderer.render(scene, camera); requestAnimationFrame(loop); })();
 
+/** Does a footprint fit a bx × by bed at some rotation? Uses the convex hull, widened by `pad` on every side.
+ *  Returns { fits, angle }: the smallest turn in degrees that works, positive = counterclockwise seen from above
+ *  (the same sign slicers use for Z rotation); 0 means it fits straight or turned 90°. */
+function bedFit(points, pad, bx, by) {
+  const pts = points.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const lower = [], upper = [];
+  for (const p of pts) { while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) lower.pop(); lower.push(p); }
+  for (let i = pts.length - 1; i >= 0; i--) { const p = pts[i]; while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) upper.pop(); upper.push(p); }
+  const hull = lower.slice(0, -1).concat(upper.slice(0, -1));
+  const size = (deg) => {
+    const t = deg * Math.PI / 180, c = Math.cos(t), s = Math.sin(t);
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+    for (const [x, y] of hull) { const u = x * c - y * s, v = x * s + y * c; x0 = Math.min(x0, u); x1 = Math.max(x1, u); y0 = Math.min(y0, v); y1 = Math.max(y1, v); }
+    return [x1 - x0 + 2 * pad, y1 - y0 + 2 * pad];
+  };
+  const ok = ([w, h]) => w <= bx && h <= by;
+  if (ok(size(0)) || ok(size(90))) return { fits: true, angle: 0 };
+  for (let a = 0.5; a <= 90; a += 0.5) {               // smallest turn first, either direction
+    if (ok(size(a))) return { fits: true, angle: a };
+    if (ok(size(-a))) return { fits: true, angle: -a };
+  }
+  return { fits: false, angle: 0 };
+}
+
 /* ---------------- info chips ---------------- */
 let last = null;
 function updateChips() {
@@ -524,8 +549,11 @@ function updateChips() {
     `${fa.toFixed(0)} × ${fb.toFixed(0)} mm (${(fa / 25.4).toFixed(1)} × ${(fb / 25.4).toFixed(1)} in)`, ""]);
   const [mx, my, mz] = info.mold;
   const bx = +$("bed_x").value, by = +$("bed_y").value;
-  const fits = (mx <= bx && my <= by) || (mx <= by && my <= bx);
-  chips.push(["Mold", `${mx.toFixed(0)} × ${my.toFixed(0)} × ${mz.toFixed(0)} mm${fits ? "" : ", too big for your bed"}`, fits ? "good" : "warn"]);
+  const bf = bedFit(last.ring, p.style === "slump" ? p.rim : 0, bx, by);
+  chips.push(["Mold", `${mx.toFixed(0)} × ${my.toFixed(0)} × ${mz.toFixed(0)} mm` +
+    (!bf.fits ? ", too big for your bed even turned" : bf.angle
+      ? `, fits if you turn it ${Math.abs(bf.angle)}° ${bf.angle > 0 ? "counterclockwise" : "clockwise"} on the bed (Z rotation ${bf.angle}° in your slicer)` : ""),
+    bf.fits ? "good" : "warn"]);
   if (last.stand) {
     const sFits = p.base_dia <= Math.min(bx, by);
     chips.push(["Stand", `${p.base_dia.toFixed(0)} mm base, ${(p.stand_height + 3 + p.thread_len - 1).toFixed(0)} mm tall${sFits ? "" : ", too big for your bed"}`, sFits ? "good" : "warn"]);
