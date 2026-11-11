@@ -8,7 +8,7 @@ Design 3D-printable ceramic molds shaped like Michigan's **Lower** or **Upper Pe
 - **Slump mold**: press a clay slab into the cavity.
 - Live 3D preview; downloads a `.zip` with the STL files, your settings and printing notes.
 - Try it out at https://falconphysics.github.io/michigan-mold-maker/
-- I would standardize on a single Tread Diameter so that you can reuse the stands with different molds. I use 25mm for mine.
+- I would standardize on a single Thread Diameter so that you can reuse the stands with different molds. I use 25mm for mine.
 
 Everything runs in the browser (WebAssembly geometry engine). There's no server and nothing to install.
 
